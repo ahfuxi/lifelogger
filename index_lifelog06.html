@@ -1,0 +1,428 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>隨時隨地生活記錄 – 只存 Google 共用雲端硬碟</title>
+<style>
+  :root { --bg:#0b0f14; --card:#111823; --muted:#9bb0c2; --text:#e6eef6; --accent:#4cc9f0; --accent2:#22c55e; --danger:#ef4444; }
+  html,body { height:100%; }
+  body { margin:0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, Noto Sans TC, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji"; background:linear-gradient(180deg,#0b0f14,#0d1220 40%,#0b0f14); color:var(--text); }
+  .container { max-width:980px; margin:0 auto; padding:16px; display:flex; flex-direction:column; gap:12px; }
+  .topbar { display:flex; align-items:center; gap:8px; justify-content:space-between; }
+  .daynav { display:flex; align-items:center; gap:8px; }
+  button, input, select, textarea { color:var(--text); background:#0f1520; border:1px solid #22304a; border-radius:10px; padding:8px 12px; }
+  button { cursor:pointer; }
+  button.primary { background:linear-gradient(180deg, #223a63, #15233a); border-color:#2e4f80; }
+  button.accent { background:linear-gradient(180deg, #0f2d38, #0b2330); border-color:#1a647a; }
+  button.good { background:linear-gradient(180deg, #10321d, #0b2216); border-color:#155934; }
+  button.warn { background:linear-gradient(180deg, #3a2a0b, #2a1e08); border-color:#6a4a16; }
+  button.danger { background:linear-gradient(180deg, #3a1111, #2a0b0b); border-color:#6a1f1f; }
+  .grid { display:grid; grid-template-columns: 1fr; gap:12px; }
+  @media (min-width: 860px) { .grid { grid-template-columns: 1.1fr 0.9fr; } }
+  .card { background: #0e1522; border:1px solid #1b2a44; border-radius:16px; box-shadow:0 0 0 1px #0b1220 inset; }
+  .card h3 { margin:0; padding:12px 14px; border-bottom:1px solid #15233a; color:#c7d7ea; }
+  .card .content { padding:12px; }
+  .list { display:flex; flex-direction:column; gap:8px; }
+  .item { display:grid; grid-template-columns: 44px 1fr auto; gap:10px; align-items:center; padding:10px; border:1px solid #1b2a44; border-radius:12px; background:#0b1320; }
+  .type { width:44px; height:44px; display:grid; place-items:center; border-radius:10px; background:#0f1a2b; border:1px solid #1c2a45; font-size:18px; }
+  .meta { font-size:12px; color:var(--muted); }
+  .thumb { max-width:100%; max-height:200px; border-radius:10px; border:1px solid #1b2a44; }
+  .controls { display:flex; flex-wrap:wrap; gap:8px; }
+  textarea { width:100%; min-height:64px; resize:vertical; }
+  .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .muted { color:var(--muted); }
+  .inline { display:inline-block; vertical-align:middle; }
+  .hidden { display:none; }
+  .pill { padding:4px 8px; border-radius:999px; font-size:12px; border:1px solid #1b2a44; background:#0b1320; color:#cfe3f7; }
+  .disabled { opacity:0.6; pointer-events:none; }
+</style>
+</head>
+<body>
+  <div class="container">
+    <div class="topbar">
+      <div class="daynav">
+        <button id="prevDay" aria-label="前一天">⟨</button>
+        <strong id="dayLabel"></strong>
+        <button id="nextDay" aria-label="後一天">⟩</button>
+      </div>
+      <div class="row">
+        <span class="pill" id="storageInfo">儲存：<b>Google Drive（共用雲端硬碟）</b></span>
+        <button id="connectDrive" class="accent">連線 Google Drive</button>
+        <button id="reauth" class="warn">重新授權/切換帳號</button>
+        <button id="downloadZip" class="good">下載當日 ZIP</button>
+      </div>
+    </div>
+
+    <div class="grid">
+      <section class="card" style="min-height:280px;">
+        <h3>當日紀錄</h3>
+        <div class="content">
+          <div id="emptyState" class="muted">今天還沒有記錄，從下方開始新增吧！</div>
+          <div id="list" class="list"></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h3>新增記錄（自動加上時間）</h3>
+        <div class="content">
+          <div class="row" style="justify-content:space-between;">
+            <div>
+              <span class="muted">現在時間：</span>
+              <span id="now"></span>
+            </div>
+            <div>
+              <label class="muted inline">切換日期：</label>
+              <input type="date" id="datePicker" />
+            </div>
+          </div>
+
+          <fieldset id="inputArea" class="" style="border:0; padding:0; margin:0;">
+            <h4>文字</h4>
+            <textarea id="textInput" placeholder="寫下此刻...（範例：想法、地點、事件）"></textarea>
+            <div class="controls">
+              <button id="addText" class="primary">加入文字</button>
+            </div>
+
+            <h4>照片</h4>
+            <div class="row">
+              <input id="photoInput" type="file" accept="image/*" capture="environment" />
+              <button id="snapMode" class="accent">開相機拍照</button>
+            </div>
+            <div id="cameraArea" class="hidden">
+              <video id="cam" playsinline autoplay muted style="max-width:100%; border-radius:12px; border:1px solid #1b2a44;"></video>
+              <div class="controls" style="margin-top:8px;">
+                <button id="takePhoto" class="good">拍照</button>
+                <button id="closeCam">關閉相機</button>
+              </div>
+            </div>
+
+            <h4>影像</h4>
+            <div class="row">
+              <input id="videoInput" type="file" accept="video/*" capture="camcorder" />
+              <button id="recVideo" class="accent">用相機錄影</button>
+              <span id="recVideoState" class="muted"></span>
+            </div>
+
+            <h4>錄音</h4>
+            <div class="row">
+              <button id="recAudio" class="accent">開始錄音</button>
+              <span id="recAudioState" class="muted"></span>
+            </div>
+          </fieldset>
+          <div id="needAuth" class="muted">請先按上方「連線 Google Drive」授權，才能新增與瀏覽記錄。</div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+<script async defer src="https://accounts.google.com/gsi/client"></script>
+<script async defer src="https://apis.google.com/js/api.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/jszip@3.10.1/dist/jszip.min.js"></script>
+
+<script>
+(function(){
+  const $ = (sel)=>document.querySelector(sel);
+  const pad=(n)=> (n<10? '0'+n : ''+n);
+  const toLocalDate = (y,m,d)=> new Date(y, m-1, d);
+  const parseYYYYMMDD = (s)=>{ const [y,m,d] = s.split('-').map(Number); return toLocalDate(y,m,d); };
+  const fmtDate = (d)=> `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+  const fmtTime = (d)=> `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  const nowStr = ()=> new Date().toLocaleString();
+  const week = ['日','一','二','三','四','五','六'];
+
+  const CLIENT_ID = '341167492609-8rlsapvqj5rgrd0m658jpgn1ve6cbu9c.apps.googleusercontent.com';
+  const API_KEY   = 'AIzaSyAsoILWwpFsA_JBsrl_MqTzLPi2MykOXn4';
+  const SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.readonly';
+  const DRIVE_FOLDER_ID = '1Vg1ES1Ca0xCNHRSDPuBSA4oQ9bvkczu9';
+
+  let accessToken = null;
+
+  const dayLabel = $('#dayLabel');
+  const nowLabel = $('#now');
+  const datePicker = $('#datePicker');
+  const listEl = $('#list');
+  const emptyState = $('#emptyState');
+  const inputArea = $('#inputArea');
+  const needAuth = $('#needAuth');
+
+  const textInput = $('#textInput');
+  const addTextBtn = $('#addText');
+  const photoInput = $('#photoInput');
+  const videoInput = $('#videoInput');
+
+  const snapModeBtn = $('#snapMode');
+  const cameraArea = $('#cameraArea');
+  const cam = $('#cam');
+  const takePhotoBtn = $('#takePhoto');
+  const closeCamBtn = $('#closeCam');
+
+  const recVideoBtn = $('#recVideo');
+  const recVideoState = $('#recVideoState');
+  const recAudioBtn = $('#recAudio');
+  const recAudioState = $('#recAudioState');
+
+  const prevDayBtn = $('#prevDay');
+  const nextDayBtn = $('#nextDay');
+  const connectBtn = $('#connectDrive');
+  const reauthBtn = $('#reauth');
+  const downloadZipBtn = $('#downloadZip');
+
+  let currentDay = fmtDate(new Date());
+  let mediaStream = null;
+  let videoRecorder = null; let videoChunks = [];
+  let audioRecorder = null; let audioChunks = [];
+
+  (async function init(){
+    datePicker.value = currentDay;
+    tickNow(); setInterval(tickNow, 1000);
+    renderDay();
+    await new Promise((r)=>{ if(window.gapi && gapi.load) r(); else window.addEventListener('load', r); });
+    await new Promise((resolve)=>{ gapi.load('client', async ()=>{ await gapi.client.init({ apiKey: API_KEY, discoveryDocs:[ 'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest' ]}); resolve(); }); });
+  })();
+
+  function tickNow(){ nowLabel.textContent = nowStr(); }
+  function setDay(d){ currentDay = d; datePicker.value = d; renderDay(); }
+  function dayShift(delta){ const base = parseYYYYMMDD(currentDay); base.setDate(base.getDate()+delta); setDay(fmtDate(base)); }
+
+  prevDayBtn.onclick = ()=> dayShift(-1);
+  nextDayBtn.onclick = ()=> dayShift(1);
+  datePicker.onchange = ()=> setDay(datePicker.value);
+
+  let tokenClient;
+  async function ensureAuth(promptMode){
+    if(accessToken && !promptMode) return;
+    await new Promise((resolve, reject)=>{
+      tokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: CLIENT_ID,
+        scope: SCOPES,
+        callback: (resp)=>{ if(resp && resp.access_token){ accessToken = resp.access_token; resolve(); } else reject('no_token'); },
+      });
+      tokenClient.requestAccessToken({ prompt: promptMode || 'consent' });
+    });
+    inputArea.classList.remove('disabled'); needAuth.classList.add('hidden');
+    $('#storageInfo').textContent = `儲存：Google Drive（Folder: ${DRIVE_FOLDER_ID.slice(0,6)}…）`;
+  }
+  connectBtn.onclick = async ()=>{ try{ await ensureAuth('consent'); await renderDay(); }catch(e){ alert('授權失敗：'+e); } };
+  reauthBtn.onclick   = async ()=>{ try{ await ensureAuth('select_account'); await renderDay(); }catch(e){ alert('授權失敗：'+e); } };
+
+  async function ensureDaySubfolder(parentId, day){
+    const q = `name='${day}' and mimeType='application/vnd.google-apps.folder' and '${parentId}' in parents and trashed=false`;
+    const res = await gapi.client.drive.files.list({ q, fields:'files(id,name)', supportsAllDrives:true, includeItemsFromAllDrives:true });
+    if(res.result.files?.length) return res.result.files[0].id;
+    const folder = await gapi.client.drive.files.create({ resource:{ name:day, mimeType:'application/vnd.google-apps.folder', parents:[parentId] }, fields:'id', supportsAllDrives:true });
+    return folder.result.id;
+  }
+  async function findFileInFolderByName(parentId, name){
+    const q = `name='${name}' and '${parentId}' in parents and trashed=false`;
+    const res = await gapi.client.drive.files.list({ q, fields:'files(id,name)', supportsAllDrives:true, includeItemsFromAllDrives:true });
+    return res.result.files?.[0] || null;
+  }
+  async function downloadFileBlob(fileId){
+    const url = `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`;
+    const r = await fetch(url, { headers:{ Authorization:`Bearer ${accessToken}` }});
+    if(!r.ok) throw new Error('下載失敗');
+    return await r.blob();
+  }
+  async function uploadBinary(parentId, name, blob, mime){
+    const metadata = { name, mimeType: mime, parents:[parentId] };
+    const form = new FormData();
+    form.append('metadata', new Blob([JSON.stringify(metadata)], {type:'application/json'}));
+    form.append('file', blob);
+    const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true', { method:'POST', headers:{ 'Authorization':`Bearer ${accessToken}` }, body: form });
+    if(!res.ok) throw new Error('上傳失敗');
+    return (await res.json()).id;
+  }
+  async function createOrUpdateJson(parentId, name, json){
+    const exist = await findFileInFolderByName(parentId, name);
+    const boundary = '-------314159265358979323846';
+    const CRLF = '\r\n';
+    const delimiter = `--${boundary}${CRLF}`;
+    const closeDelim = `${CRLF}--${boundary}--`;
+    const metadata = exist? { name, mimeType:'application/json' } : { name, mimeType:'application/json', parents:[parentId] };
+    const head1 = `Content-Type: application/json; charset=UTF-8${CRLF}${CRLF}`;
+    const head2 = `Content-Type: application/json${CRLF}${CRLF}`;
+    const body = delimiter + head1 + JSON.stringify(metadata) + CRLF + delimiter + head2 + JSON.stringify(json) + closeDelim;
+    const url = exist? `https://www.googleapis.com/upload/drive/v3/files/${exist.id}?uploadType=multipart&supportsAllDrives=true` : `https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true`;
+    const method = exist? 'PATCH' : 'POST';
+    const res = await fetch(url, { method, headers:{ 'Authorization':`Bearer ${accessToken}`, 'Content-Type':`multipart/related; boundary=${boundary}` }, body });
+    if(!res.ok) throw new Error('JSON 上傳/更新失敗');
+    return (await res.json()).id;
+  }
+
+  async function loadEntriesFromDrive(day){
+    if(!accessToken) return [];
+    const dayFolderId = await ensureDaySubfolder(DRIVE_FOLDER_ID, day);
+    const file = await findFileInFolderByName(dayFolderId, 'entries.json');
+    if(!file) return [];
+    try{
+      const blob = await downloadFileBlob(file.id);
+      const text = await blob.text();
+      const arr = JSON.parse(text);
+      return Array.isArray(arr)? arr : [];
+    }catch{ return []; }
+  }
+  async function saveEntriesToDrive(day, items){
+    const dayFolderId = await ensureDaySubfolder(DRIVE_FOLDER_ID, day);
+    await createOrUpdateJson(dayFolderId, 'entries.json', items);
+    return dayFolderId;
+  }
+
+  async function renderDay(){
+    const d = parseYYYYMMDD(currentDay);
+    dayLabel.textContent = `${currentDay}（${week[d.getDay()]}）`;
+    listEl.innerHTML = '';
+    if(!accessToken){ emptyState.style.display='block'; needAuth.classList.remove('hidden'); inputArea.classList.add('disabled'); return; }
+    const items = await loadEntriesFromDrive(currentDay);
+    if(!items.length){ emptyState.style.display='block'; return; }
+    emptyState.style.display='none';
+    for(const it of items){ listEl.appendChild(await renderItem(it)); }
+  }
+
+  async function renderItem(it){
+    const wrap = document.createElement('div'); wrap.className='item';
+    const icon = document.createElement('div'); icon.className='type';
+    const meta = document.createElement('div'); meta.className='meta';
+    let content;
+    if(it.type==='text'){ icon.textContent='✎'; content = document.createElement('div'); content.textContent = it.content || ''; }
+    else if(it.type==='photo' || it.type==='video' || it.type==='audio'){
+      const blob = it.fileId ? await downloadFileBlob(it.fileId) : null;
+      if(it.type==='photo'){ icon.textContent='🖼️'; content = document.createElement('div'); const img=document.createElement('img'); img.className='thumb'; img.loading='lazy'; img.src = URL.createObjectURL(blob); content.appendChild(img); }
+      else if(it.type==='video'){ icon.textContent='🎞️'; content = document.createElement('div'); const vid=document.createElement('video'); vid.className='thumb'; vid.controls=true; vid.src = URL.createObjectURL(blob); content.appendChild(vid); }
+      else { icon.textContent='🎙️'; content = document.createElement('div'); const au=document.createElement('audio'); au.controls=true; au.src = URL.createObjectURL(blob); content.appendChild(au); }
+    }
+    const time = new Date(it.time);
+    meta.textContent = `${labelOf(it.type)} · ${fmtTime(time)}`;
+    wrap.appendChild(icon); wrap.appendChild((()=>{ const box=document.createElement('div'); box.appendChild(content); return box; })()); wrap.appendChild(meta);
+    return wrap;
+  }
+  function labelOf(t){ return t==='text'?'文字': t==='photo'?'照片': t==='video'?'影片':'錄音'; }
+
+  addTextBtn.onclick = async ()=>{
+    if(!accessToken) return alert('請先連線 Google Drive');
+    const val = textInput.value.trim(); if(!val) return;
+    const items = await loadEntriesFromDrive(currentDay);
+    const entry = { type:'text', time:new Date().toISOString(), content:val };
+    items.push(entry);
+    await saveEntriesToDrive(currentDay, items);
+    textInput.value='';
+    renderDay();
+  };
+
+  photoInput.onchange = async (e)=>{
+    if(!accessToken) return alert('請先連線 Google Drive');
+    const f = e.target.files && e.target.files[0]; if(!f) return;
+    const dayFolderId = await ensureDaySubfolder(DRIVE_FOLDER_ID, currentDay);
+    const fileId = await uploadBinary(dayFolderId, `IMG_${Date.now()}.jpg`, new Blob([await f.arrayBuffer()], {type:f.type||'image/jpeg'}), f.type||'image/jpeg');
+    const items = await loadEntriesFromDrive(currentDay);
+    items.push({ type:'photo', time:new Date().toISOString(), fileId, mime:f.type||'image/jpeg' });
+    await saveEntriesToDrive(currentDay, items);
+    photoInput.value='';
+    renderDay();
+  };
+
+  snapModeBtn.onclick = async ()=>{
+    if(!accessToken) return alert('請先連線 Google Drive');
+    try{ mediaStream = await navigator.mediaDevices.getUserMedia({ video:true, audio:false }); cam.srcObject = mediaStream; document.getElementById('cameraArea').classList.remove('hidden'); }catch(err){ alert('相機無法啟用：'+err); }
+  };
+  closeCamBtn.onclick = ()=> stopCamera();
+  function stopCamera(){ if(mediaStream){ mediaStream.getTracks().forEach(t=>t.stop()); mediaStream=null; } document.getElementById('cameraArea').classList.add('hidden'); }
+  takePhotoBtn.onclick = async ()=>{
+    if(!mediaStream) return; const track = mediaStream.getVideoTracks()[0];
+    const cap = new ImageCapture(track);
+    try{
+      const bitmap = await cap.grabFrame(); const canvas = document.createElement('canvas'); canvas.width=bitmap.width; canvas.height=bitmap.height; const ctx=canvas.getContext('2d'); ctx.drawImage(bitmap,0,0);
+      canvas.toBlob(async (blob)=>{
+        const dayFolderId = await ensureDaySubfolder(DRIVE_FOLDER_ID, currentDay);
+        const fileId = await uploadBinary(dayFolderId, `IMG_${Date.now()}.jpg`, blob, 'image/jpeg');
+        const items = await loadEntriesFromDrive(currentDay);
+        items.push({ type:'photo', time:new Date().toISOString(), fileId, mime:'image/jpeg' });
+        await saveEntriesToDrive(currentDay, items);
+        renderDay();
+      }, 'image/jpeg', 0.9);
+    }catch(err){ alert('拍照失敗：'+err); }
+  };
+
+  videoInput.onchange = async (e)=>{
+    if(!accessToken) return alert('請先連線 Google Drive');
+    const f = e.target.files && e.target.files[0]; if(!f) return;
+    const dayFolderId = await ensureDaySubfolder(DRIVE_FOLDER_ID, currentDay);
+    const blob = new Blob([await f.arrayBuffer()], { type:f.type||'video/mp4' });
+    const fileId = await uploadBinary(dayFolderId, `VID_${Date.now()}.${(blob.type.includes('webm')?'webm':'mp4')}`, blob, blob.type);
+    const items = await loadEntriesFromDrive(currentDay);
+    items.push({ type:'video', time:new Date().toISOString(), fileId, mime:blob.type });
+    await saveEntriesToDrive(currentDay, items);
+    videoInput.value='';
+    renderDay();
+  };
+
+  recVideoBtn.onclick = async ()=>{
+    if(!accessToken) return alert('請先連線 Google Drive');
+    try{
+      if(!videoRecorder){
+        mediaStream = await navigator.mediaDevices.getUserMedia({ video:true, audio:true });
+        videoChunks=[]; videoRecorder = new MediaRecorder(mediaStream);
+        videoRecorder.ondataavailable = (e)=>{ if(e.data && e.data.size) videoChunks.push(e.data); };
+        videoRecorder.onstop = async ()=>{
+          const blob = new Blob(videoChunks, { type: videoChunks[0]?.type || 'video/webm' });
+          const dayFolderId = await ensureDaySubfolder(DRIVE_FOLDER_ID, currentDay);
+          const fileId = await uploadBinary(dayFolderId, `VID_${Date.now()}.webm`, blob, blob.type||'video/webm');
+          const items = await loadEntriesFromDrive(currentDay);
+          items.push({ type:'video', time:new Date().toISOString(), fileId, mime:blob.type||'video/webm' });
+          await saveEntriesToDrive(currentDay, items);
+          stopCamera(); videoRecorder=null; videoChunks=[]; recVideoState.textContent=''; recVideoBtn.textContent='用相機錄影';
+          renderDay();
+        };
+        videoRecorder.start(); recVideoState.textContent='錄影中… 再按一次停止'; recVideoBtn.textContent='停止錄影';
+      } else { videoRecorder.stop(); }
+    }catch(err){ alert('錄影失敗或未授權：'+err); }
+  };
+
+  recAudioBtn.onclick = async ()=>{
+    if(!accessToken) return alert('請先連線 Google Drive');
+    try{
+      if(!audioRecorder){
+        const stream = await navigator.mediaDevices.getUserMedia({ audio:true });
+        audioChunks=[]; audioRecorder = new MediaRecorder(stream);
+        audioRecorder.ondataavailable = (e)=>{ if(e.data && e.data.size) audioChunks.push(e.data); };
+        audioRecorder.onstop = async ()=>{
+          const blob = new Blob(audioChunks, { type: audioChunks[0]?.type || 'audio/webm' });
+          const dayFolderId = await ensureDaySubfolder(DRIVE_FOLDER_ID, currentDay);
+          const fileId = await uploadBinary(dayFolderId, `AUD_${Date.now()}.webm`, blob, blob.type||'audio/webm');
+          const items = await loadEntriesFromDrive(currentDay);
+          items.push({ type:'audio', time:new Date().toISOString(), fileId, mime:blob.type||'audio/webm' });
+          await saveEntriesToDrive(currentDay, items);
+          stream.getTracks().forEach(t=>t.stop()); audioRecorder=null; audioChunks=[]; recAudioState.textContent=''; recAudioBtn.textContent='開始錄音';
+          renderDay();
+        };
+        audioRecorder.start(); recAudioState.textContent='錄音中… 再按一次停止'; recAudioBtn.textContent='停止錄音';
+      } else { audioRecorder.stop(); }
+    }catch(err){ alert('錄音失敗或未授權：'+err); }
+  };
+
+  downloadZipBtn.onclick = async ()=>{
+    if(!accessToken) return alert('請先連線 Google Drive');
+    const items = await loadEntriesFromDrive(currentDay);
+    if(!items.length) return alert('當日沒有資料');
+    const zip = new JSZip();
+    zip.file('entries.json', JSON.stringify(items, null, 2));
+    for(const it of items){
+      if(it.type==='text') continue;
+      try{
+        const b = await downloadFileBlob(it.fileId);
+        const ext = it.mime?.includes('image')? 'jpg' : it.mime?.includes('video')? 'webm' : 'webm';
+        zip.file(`${it.type.toUpperCase()}_${new Date(it.time).getTime()}.${ext}`, b);
+      }catch{}
+    }
+    const blob = await zip.generateAsync({ type:'blob' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `${currentDay}.life.zip`;
+    a.click();
+  };
+
+  inputArea.classList.add('disabled'); needAuth.classList.remove('hidden');
+})();
+</script>
+</body>
+</html>
