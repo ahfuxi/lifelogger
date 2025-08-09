@@ -1,0 +1,439 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>隨時隨地生活記錄 – Web + Google Drive (Fixed Folder)</title>
+<style>
+  :root { --bg:#0b0f14; --card:#111823; --muted:#9bb0c2; --text:#e6eef6; --accent:#4cc9f0; --accent2:#22c55e; --danger:#ef4444; }
+  html,body { height:100%; }
+  body { margin:0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, Noto Sans TC, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji"; background:linear-gradient(180deg,#0b0f14,#0d1220 40%,#0b0f14); color:var(--text); }
+  .container { max-width:980px; margin:0 auto; padding:16px; display:flex; flex-direction:column; gap:12px; }
+  .topbar { display:flex; align-items:center; gap:8px; justify-content:space-between; }
+  .daynav { display:flex; align-items:center; gap:8px; }
+  button, input, select, textarea { color:var(--text); background:#0f1520; border:1px solid #22304a; border-radius:10px; padding:8px 12px; }
+  button { cursor:pointer; }
+  button.primary { background:linear-gradient(180deg, #223a63, #15233a); border-color:#2e4f80; }
+  button.accent { background:linear-gradient(180deg, #0f2d38, #0b2330); border-color:#1a647a; }
+  button.good { background:linear-gradient(180deg, #10321d, #0b2216); border-color:#155934; }
+  button.danger { background:linear-gradient(180deg, #3a1111, #2a0b0b); border-color:#6a1f1f; }
+  .grid { display:grid; grid-template-columns: 1fr; gap:12px; }
+  @media (min-width: 860px) { .grid { grid-template-columns: 1.1fr 0.9fr; } }
+  .card { background: #0e1522; border:1px solid #1b2a44; border-radius:16px; box-shadow:0 0 0 1px #0b1220 inset; }
+  .card h3 { margin:0; padding:12px 14px; border-bottom:1px solid #15233a; color:#c7d7ea; }
+  .card .content { padding:12px; }
+  .list { display:flex; flex-direction:column; gap:8px; }
+  .item { display:grid; grid-template-columns: 44px 1fr auto; gap:10px; align-items:center; padding:10px; border:1px solid #1b2a44; border-radius:12px; background:#0b1320; }
+  .type { width:44px; height:44px; display:grid; place-items:center; border-radius:10px; background:#0f1a2b; border:1px solid #1c2a45; font-size:18px; }
+  .meta { font-size:12px; color:var(--muted); }
+  .thumb { max-width:100%; max-height:200px; border-radius:10px; border:1px solid #1b2a44; }
+  .controls { display:flex; flex-wrap:wrap; gap:8px; }
+  textarea { width:100%; min-height:64px; resize:vertical; }
+  .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .muted { color:var(--muted); }
+  .hidden { display:none; }
+  .pill { padding:4px 8px; border-radius:999px; font-size:12px; border:1px solid #1b2a44; background:#0b1320; color:#cfe3f7; }
+</style>
+</head>
+<body>
+  <div class="container">
+    <div class="topbar">
+      <div class="daynav">
+        <button id="prevDay" aria-label="前一天">⟨</button>
+        <strong id="dayLabel"></strong>
+        <button id="nextDay" aria-label="後一天">⟩</button>
+      </div>
+      <div class="row">
+        <span class="pill" id="storageInfo">儲存：IndexedDB（離線）</span>
+        <button id="connectDrive" class="accent">連線 Google Drive</button>
+        <!-- 固定資料夾版本：不顯示挑選按鈕
+        <button id="pickDriveFolder" class="accent hidden">選擇 Drive 資料夾</button>
+        -->
+      </div>
+    </div>
+
+    <div class="grid">
+      <section class="card" style="min-height:280px;">
+        <h3>當日紀錄</h3>
+        <div class="content">
+          <div id="emptyState" class="muted">今天還沒有記錄，從下方開始新增吧！</div>
+          <div id="list" class="list"></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h3>新增記錄（自動加上時間）</h3>
+        <div class="content">
+          <div class="row" style="justify-content:space-between;">
+            <div>
+              <span class="muted">現在時間：</span>
+              <span id="now"></span>
+            </div>
+            <div>
+              <label class="muted inline">切換日期：</label>
+              <input type="date" id="datePicker" />
+            </div>
+          </div>
+
+          <h4>文字</h4>
+          <textarea id="textInput" placeholder="寫下此刻...（範例：想法、地點、事件）"></textarea>
+          <div class="controls">
+            <button id="addText" class="primary">加入文字</button>
+          </div>
+
+          <h4>照片</h4>
+          <div class="row">
+            <input id="photoInput" type="file" accept="image/*" capture="environment" />
+            <button id="snapMode" class="accent">開相機拍照</button>
+          </div>
+          <div id="cameraArea" class="hidden">
+            <video id="cam" playsinline autoplay muted style="max-width:100%; border-radius:12px; border:1px solid #1b2a44;"></video>
+            <div class="controls" style="margin-top:8px;">
+              <button id="takePhoto" class="good">拍照</button>
+              <button id="closeCam">關閉相機</button>
+            </div>
+          </div>
+
+          <h4>影像</h4>
+          <div class="row">
+            <input id="videoInput" type="file" accept="video/*" capture="camcorder" />
+            <button id="recVideo" class="accent">用相機錄影</button>
+            <span id="recVideoState" class="muted"></span>
+          </div>
+
+          <h4>錄音</h4>
+          <div class="row">
+            <button id="recAudio" class="accent">開始錄音</button>
+            <span id="recAudioState" class="muted"></span>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+<!-- Google API（已嵌入 ahfuxi 的 Client ID / API Key） -->
+<script async defer src="https://accounts.google.com/gsi/client"></script>
+<script async defer src="https://apis.google.com/js/api.js"></script>
+
+<script>
+(function(){
+  // ===== Utilities =====
+  const $ = (sel)=>document.querySelector(sel);
+  const pad=(n)=> (n<10? '0'+n : ''+n);
+  const toLocalDate = (y,m,d)=> new Date(y, m-1, d); // 本地時區，不會被 UTC 影響
+  const parseYYYYMMDD = (s)=>{ const [y,m,d] = s.split('-').map(Number); return toLocalDate(y,m,d); };
+  const fmtDate = (d)=> `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`; // yyyy-mm-dd（本地）
+  const fmtTime = (d)=> `${pad(d.getHours())}:${pad(d.getMinutes())}`; // HH:MM
+  const nowStr = ()=> new Date().toLocaleString();
+  const week = ['日','一','二','三','四','五','六'];
+
+  // ===== IndexedDB minimal wrapper =====
+  const DB_NAME = 'life_logger_web';
+  const DB_VER = 2; // bump: better date handling
+  let db;
+  function openDB(){
+    return new Promise((resolve, reject)=>{
+      const req = indexedDB.open(DB_NAME, DB_VER);
+      req.onupgradeneeded = (e)=>{
+        const d = e.target.result;
+        if(!d.objectStoreNames.contains('entries')){
+          const store = d.createObjectStore('entries', { keyPath: 'id', autoIncrement: true });
+          store.createIndex('by_day', 'day');
+        } else {
+          const store = req.transaction.objectStore('entries');
+          if(!store.indexNames.contains('by_day')) store.createIndex('by_day','day');
+        }
+      };
+      req.onsuccess = ()=>{ db = req.result; resolve(); };
+      req.onerror = ()=> reject(req.error);
+    });
+  }
+  function addEntryLocal(entry){
+    return new Promise((resolve, reject)=>{
+      const tx = db.transaction('entries','readwrite');
+      tx.objectStore('entries').add(entry);
+      tx.oncomplete = ()=> resolve();
+      tx.onerror = ()=> reject(tx.error);
+    });
+  }
+  function listByDay(day){
+    return new Promise((resolve, reject)=>{
+      const tx = db.transaction('entries','readonly');
+      const idx = tx.objectStore('entries').index('by_day');
+      const req = idx.getAll(day);
+      req.onsuccess = ()=> resolve(req.result.sort((a,b)=> a.time.localeCompare(b.time)));
+      req.onerror = ()=> reject(req.error);
+    });
+  }
+
+  // ===== Google Drive (OAuth + Drive API v3) =====
+  const CLIENT_ID = '341167492609-8rlsapvqj5rgrd0m658jpgn1ve6cbu9c.apps.googleusercontent.com'; // ahfuxi
+  const API_KEY   = 'AIzaSyAsoILWwpFsA_JBsrl_MqTzLPi2MykOXn4'; // ahfuxi
+  const SCOPES = 'https://www.googleapis.com/auth/drive.file https://www.googleapis.com/auth/drive.readonly';
+
+  let accessToken = null; // 短期 token
+  // 固定為使用者提供的共用雲端硬碟資料夾（可用 localStorage 覆蓋）
+  const DEFAULT_DRIVE_FOLDER_ID = '1Vg1ES1Ca0xCNHRSDPuBSA4oQ9bvkczu9';
+  let driveFolderId = localStorage.getItem('life_logger_drive_folder') || DEFAULT_DRIVE_FOLDER_ID;
+
+  const connectBtn = $('#connectDrive');
+
+  // 初始化 Google API
+  function initGapi(){
+    return new Promise((resolve)=>{
+      gapi.load('client', async ()=>{
+        await gapi.client.init({ apiKey: API_KEY, discoveryDocs:[ 'https://www.googleapis.com/discovery/v1/apis/drive/v3/rest' ]});
+        resolve();
+      });
+    });
+  }
+
+  async function ensureAuth(){
+    // Google Identity Services (token client)
+    return new Promise((resolve, reject)=>{
+      const tokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: CLIENT_ID,
+        scope: SCOPES,
+        callback: (resp)=>{
+          if(resp && resp.access_token){ accessToken = resp.access_token; resolve(); }
+          else reject('No access token');
+        },
+      });
+      tokenClient.requestAccessToken({ prompt:'consent' });
+    });
+  }
+
+  // 建立或尋找當日子資料夾（以天為單位）
+  async function ensureDaySubfolder(parentId, day){
+    const q = `name='${day}' and mimeType='application/vnd.google-apps.folder' and '${parentId}' in parents and trashed=false`;
+    const res = await gapi.client.drive.files.list({ q, fields:'files(id,name)', supportsAllDrives:true, includeItemsFromAllDrives:true });
+    if(res.result.files && res.result.files.length) return res.result.files[0].id;
+    const folder = await gapi.client.drive.files.create({
+      resource: { name: day, mimeType:'application/vnd.google-apps.folder', parents:[parentId] }, fields:'id', supportsAllDrives:true
+    });
+    return folder.result.id;
+  }
+
+  async function uploadOrUpdateJSON(parentId, name, json){
+    const boundary = '-------314159265358979323846';
+    const delimiter = `\r\n--${boundary}\r\n`;
+    const closeDelim = `\r\n--${boundary}--`;
+    const metadata = { name, mimeType:'application/json', parents:[parentId] };
+    const body = delimiter + 'Content-Type: application/json; charset=UTF-8\r\n\r\n' + JSON.stringify(metadata) +
+      delimiter + 'Content-Type: application/json\r\n\r\n' + JSON.stringify(json) + closeDelim;
+    const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true', {
+      method:'POST', headers:{ 'Authorization':`Bearer ${accessToken}`, 'Content-Type':`multipart/related; boundary=${boundary}` }, body
+    });
+    if(!res.ok) throw new Error('JSON 上傳失敗');
+    return (await res.json()).id;
+  }
+
+  async function uploadBinary(parentId, name, blob, mime){
+    const metadata = { name, mimeType: mime, parents:[parentId] };
+    const form = new FormData();
+    form.append('metadata', new Blob([JSON.stringify(metadata)], {type:'application/json'}));
+    form.append('file', blob);
+    const res = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&supportsAllDrives=true', {
+      method:'POST', headers:{ 'Authorization':`Bearer ${accessToken}` }, body: form
+    });
+    if(!res.ok) throw new Error('檔案上傳失敗');
+    return (await res.json()).id;
+  }
+
+  async function saveEntryToDrive(entry){
+    if(!driveFolderId || !accessToken) return; // 未連線就略過
+    const dayFolderId = await ensureDaySubfolder(driveFolderId, entry.day);
+    // 1) 更新 entries.json（簡化為每次重寫）
+    const items = await listByDay(entry.day);
+    const exportJson = await entriesToExportJson(items);
+    await uploadOrUpdateJSON(dayFolderId, 'entries.json', exportJson);
+    // 2) 媒體檔
+    if(entry.type !== 'text' && entry.blob){
+      const base = `${entry.type.toUpperCase()}_${new Date(entry.time).getTime()}`;
+      const ext = entry.blob.type.startsWith('image/')? '.jpg' : entry.blob.type.startsWith('video/')? '.webm' : '.webm';
+      await uploadBinary(dayFolderId, base+ext, entry.blob, entry.blob.type || 'application/octet-stream');
+    }
+  }
+
+  // ===== State =====
+  let currentDay = fmtDate(new Date());
+  let mediaStream = null; // camera stream
+  let videoRecorder = null; let videoChunks = [];
+  let audioRecorder = null; let audioChunks = [];
+
+  // ===== DOM refs =====
+  const dayLabel = $('#dayLabel');
+  const nowLabel = $('#now');
+  const datePicker = $('#datePicker');
+  const listEl = $('#list');
+  const emptyState = $('#emptyState');
+
+  // inputs
+  const textInput = $('#textInput');
+  const addTextBtn = $('#addText');
+  const photoInput = $('#photoInput');
+  const videoInput = $('#videoInput');
+
+  // camera
+  const snapModeBtn = $('#snapMode');
+  const cameraArea = $('#cameraArea');
+  const cam = $('#cam');
+  const takePhotoBtn = $('#takePhoto');
+  const closeCamBtn = $('#closeCam');
+
+  // recording
+  const recVideoBtn = $('#recVideo');
+  const recVideoState = $('#recVideoState');
+  const recAudioBtn = $('#recAudio');
+  const recAudioState = $('#recAudioState');
+
+  const prevDayBtn = $('#prevDay');
+  const nextDayBtn = $('#nextDay');
+
+  // ===== Init =====
+  (async function init(){
+    await openDB();
+    datePicker.value = currentDay;
+    tickNow(); setInterval(tickNow, 1000);
+    renderDay();
+
+    // 初始化 GAPI（等待 api.js 載入）
+    await new Promise((r)=>{ if(window.gapi && gapi.load) r(); else window.addEventListener('load', r); });
+    await initGapi();
+
+    if(driveFolderId){
+      $('#storageInfo').textContent = `儲存：IndexedDB + Google Drive（Folder: ${driveFolderId.slice(0,6)}…）`;
+    }
+  })();
+
+  function tickNow(){ nowLabel.textContent = nowStr(); }
+
+  function setDay(d){ currentDay = d; datePicker.value = d; renderDay(); }
+  function dayShift(delta){ const base = parseYYYYMMDD(currentDay); base.setDate(base.getDate()+delta); setDay(fmtDate(base)); }
+
+  prevDayBtn.onclick = ()=> dayShift(-1);
+  nextDayBtn.onclick = ()=> dayShift(1);
+  datePicker.onchange = ()=> setDay(datePicker.value);
+
+  async function renderDay(){
+    const d = parseYYYYMMDD(currentDay);
+    dayLabel.textContent = `${currentDay}（${week[d.getDay()]}）`;
+    const items = await listByDay(currentDay);
+    listEl.innerHTML = '';
+    if(!items.length){ emptyState.style.display='block'; return; }
+    emptyState.style.display='none';
+    for(const it of items){ listEl.appendChild(renderItem(it)); }
+  }
+
+  function renderItem(it){
+    const wrap = document.createElement('div'); wrap.className='item';
+    const icon = document.createElement('div'); icon.className='type';
+    const meta = document.createElement('div'); meta.className='meta';
+    let content;
+    if(it.type==='text'){ icon.textContent='✎'; content = document.createElement('div'); content.textContent = it.content || ''; }
+    else if(it.type==='photo'){ icon.textContent='🖼️'; content = document.createElement('div'); const img = document.createElement('img'); img.className='thumb'; img.loading='lazy'; img.src = URL.createObjectURL(it.blob); content.appendChild(img); }
+    else if(it.type==='video'){ icon.textContent='🎞️'; content = document.createElement('div'); const vid=document.createElement('video'); vid.className='thumb'; vid.controls=true; vid.src = URL.createObjectURL(it.blob); content.appendChild(vid); }
+    else { icon.textContent='🎙️'; content = document.createElement('div'); const au=document.createElement('audio'); au.controls=true; au.src = URL.createObjectURL(it.blob); content.appendChild(au); }
+    const time = new Date(it.time);
+    meta.textContent = `${labelOf(it.type)} · ${fmtTime(time)}`;
+    wrap.appendChild(icon); wrap.appendChild((()=>{ const box=document.createElement('div'); box.appendChild(content); return box; })()); wrap.appendChild(meta);
+    return wrap;
+  }
+
+  function labelOf(t){ return t==='text'?'文字': t==='photo'?'照片': t==='video'?'影片':'錄音'; }
+
+  async function addEntry(entry){
+    await addEntryLocal(entry);
+    renderDay();
+    if(accessToken && driveFolderId){ try{ await saveEntryToDrive(entry); }catch(e){ console.warn(e); } }
+  }
+
+  // ===== Add text =====
+  addTextBtn.onclick = async ()=>{
+    const val = textInput.value.trim(); if(!val) return;
+    const entry = { day: currentDay, time: new Date().toISOString(), type:'text', content: val };
+    textInput.value=''; await addEntry(entry);
+  };
+
+  // ===== Photo via file input =====
+  photoInput.onchange = async (e)=>{
+    const f = e.target.files && e.target.files[0]; if(!f) return;
+    const blob = new Blob([await f.arrayBuffer()], { type:f.type || 'image/jpeg' });
+    await addEntry({ day: currentDay, time: new Date().toISOString(), type:'photo', blob });
+    photoInput.value='';
+  };
+
+  // ===== Live camera photo =====
+  snapModeBtn.onclick = async ()=>{
+    try{ mediaStream = await navigator.mediaDevices.getUserMedia({ video:true, audio:false }); cam.srcObject = mediaStream; $('#cameraArea').classList.remove('hidden'); }catch(err){ alert('相機無法啟用：'+err); }
+  };
+  $('#closeCam').onclick = ()=> stopCamera();
+  function stopCamera(){ if(mediaStream){ mediaStream.getTracks().forEach(t=>t.stop()); mediaStream=null; } $('#cameraArea').classList.add('hidden'); }
+  $('#takePhoto').onclick = async ()=>{
+    if(!mediaStream) return; const track = mediaStream.getVideoTracks()[0];
+    const cap = new ImageCapture(track);
+    try{
+      const bitmap = await cap.grabFrame(); const canvas = document.createElement('canvas'); canvas.width=bitmap.width; canvas.height=bitmap.height; const ctx=canvas.getContext('2d'); ctx.drawImage(bitmap,0,0);
+      canvas.toBlob(async (blob)=>{ await addEntry({ day: currentDay, time: new Date().toISOString(), type:'photo', blob }); }, 'image/jpeg', 0.9);
+    }catch(err){ alert('拍照失敗：'+err); }
+  };
+
+  // ===== Video via file input =====
+  videoInput.onchange = async (e)=>{
+    const f = e.target.files && e.target.files[0]; if(!f) return;
+    const blob = new Blob([await f.arrayBuffer()], { type:f.type || 'video/mp4' });
+    await addEntry({ day: currentDay, time: new Date().toISOString(), type:'video', blob });
+    videoInput.value='';
+  };
+
+  // ===== Video recording via camera =====
+  recVideoBtn.onclick = async ()=>{
+    try{
+      if(!videoRecorder){
+        mediaStream = await navigator.mediaDevices.getUserMedia({ video:true, audio:true });
+        videoChunks=[]; videoRecorder = new MediaRecorder(mediaStream);
+        videoRecorder.ondataavailable = (e)=>{ if(e.data && e.data.size) videoChunks.push(e.data); };
+        videoRecorder.onstop = async ()=>{
+          const blob = new Blob(videoChunks, { type: videoChunks[0]?.type || 'video/webm' });
+          await addEntry({ day: currentDay, time: new Date().toISOString(), type:'video', blob });
+          stopCamera(); videoRecorder=null; videoChunks=[]; recVideoState.textContent=''; recVideoBtn.textContent='用相機錄影';
+        };
+        videoRecorder.start(); recVideoState.textContent='錄影中… 再按一次停止'; recVideoBtn.textContent='停止錄影';
+      } else { videoRecorder.stop(); }
+    }catch(err){ alert('錄影失敗或未授權：'+err); }
+  };
+
+  // ===== Audio recording =====
+  recAudioBtn.onclick = async ()=>{
+    try{
+      if(!audioRecorder){
+        const stream = await navigator.mediaDevices.getUserMedia({ audio:true });
+        audioChunks=[]; audioRecorder = new MediaRecorder(stream);
+        audioRecorder.ondataavailable = (e)=>{ if(e.data && e.data.size) audioChunks.push(e.data); };
+        audioRecorder.onstop = async ()=>{
+          const blob = new Blob(audioChunks, { type: audioChunks[0]?.type || 'audio/webm' });
+          await addEntry({ day: currentDay, time: new Date().toISOString(), type:'audio', blob });
+          stream.getTracks().forEach(t=>t.stop()); audioRecorder=null; audioChunks=[]; recAudioState.textContent=''; recAudioBtn.textContent='開始錄音';
+        };
+        audioRecorder.start(); recAudioState.textContent='錄音中… 再按一次停止'; recAudioBtn.textContent='停止錄音';
+      } else { audioRecorder.stop(); }
+    }catch(err){ alert('錄音失敗或未授權：'+err); }
+  };
+
+  // ===== Drive connect =====
+  connectBtn.onclick = async ()=>{
+    try{ await ensureAuth(); $('#storageInfo').textContent = `儲存：IndexedDB + Google Drive（Folder: ${driveFolderId.slice(0,6)}…）`; alert('已連線 Google Drive，將寫入指定的共用雲端硬碟資料夾'); }
+    catch(err){ alert('授權失敗：'+err); }
+  };
+
+  // ===== Export helpers =====
+  async function entriesToExportJson(items){
+    async function b64FromBlob(b){ const buf = await b.arrayBuffer(); let binary=''; const bytes=new Uint8Array(buf); const chunk=0x8000; for(let i=0;i<bytes.length;i+=chunk){ binary += String.fromCharCode.apply(null, bytes.subarray(i,i+chunk)); } return btoa(binary); }
+    const out = [];
+    for(const it of items){ if(it.type==='text') out.push({ type:'text', day:it.day, time:it.time, content:it.content }); else out.push({ type:it.type, day:it.day, time:it.time, mime: it.blob?.type || '', base64: await b64FromBlob(it.blob) }); }
+    return out;
+  }
+})();
+</script>
+</body>
+</html>
