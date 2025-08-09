@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>隨時隨地生活記錄 – Web</title>
+<style>
+  :root {
+    --bg:#0b0f14; --card:#111823; --muted:#9bb0c2; --text:#e6eef6; --accent:#4cc9f0; --accent2:#22c55e; --danger:#ef4444;
+  }
+  html,body { height:100%; }
+  body {
+    margin:0; font-family: system-ui, -apple-system, "Segoe UI", Roboto, Noto Sans TC, Helvetica, Arial, "Apple Color Emoji", "Segoe UI Emoji";
+    background:linear-gradient(180deg,#0b0f14,#0d1220 40%,#0b0f14); color:var(--text);
+  }
+  .container { max-width:980px; margin:0 auto; padding:16px; display:flex; flex-direction:column; gap:12px; }
+  .topbar { display:flex; align-items:center; gap:8px; justify-content:space-between; }
+  .daynav { display:flex; align-items:center; gap:8px; }
+  button, input, select, textarea { color:var(--text); background:#0f1520; border:1px solid #22304a; border-radius:10px; padding:8px 12px; }
+  button { cursor:pointer; }
+  button.primary { background:linear-gradient(180deg, #223a63, #15233a); border-color:#2e4f80; }
+  button.accent { background:linear-gradient(180deg, #0f2d38, #0b2330); border-color:#1a647a; }
+  button.good { background:linear-gradient(180deg, #10321d, #0b2216); border-color:#155934; }
+  button.danger { background:linear-gradient(180deg, #3a1111, #2a0b0b); border-color:#6a1f1f; }
+  .grid { display:grid; grid-template-columns: 1fr; gap:12px; }
+  @media (min-width: 860px) { .grid { grid-template-columns: 1.1fr 0.9fr; } }
+  .card { background: #0e1522; border:1px solid #1b2a44; border-radius:16px; box-shadow:0 0 0 1px #0b1220 inset; }
+  .card h3 { margin:0; padding:12px 14px; border-bottom:1px solid #15233a; color:#c7d7ea; }
+  .card .content { padding:12px; }
+  .list { display:flex; flex-direction:column; gap:8px; }
+  .item { display:grid; grid-template-columns: 44px 1fr auto; gap:10px; align-items:center; padding:10px; border:1px solid #1b2a44; border-radius:12px; background:#0b1320; }
+  .type { width:44px; height:44px; display:grid; place-items:center; border-radius:10px; background:#0f1a2b; border:1px solid #1c2a45; font-size:18px; }
+  .meta { font-size:12px; color:var(--muted); }
+  .thumb { max-width:100%; max-height:200px; border-radius:10px; border:1px solid #1b2a44; }
+  .controls { display:flex; flex-wrap:wrap; gap:8px; }
+  textarea { width:100%; min-height:64px; resize:vertical; }
+  .row { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .muted { color:var(--muted); }
+  .inline { display:inline-block; vertical-align:middle; }
+  .hidden { display:none; }
+  .pill { padding:4px 8px; border-radius:999px; font-size:12px; border:1px solid #1b2a44; background:#0b1320; color:#cfe3f7; }
+</style>
+</head>
+<body>
+  <div class="container">
+    <div class="topbar">
+      <div class="daynav">
+        <button id="prevDay" aria-label="前一天">⟨</button>
+        <strong id="dayLabel"></strong>
+        <button id="nextDay" aria-label="後一天">⟩</button>
+      </div>
+      <div class="row">
+        <span class="pill" id="storageInfo">儲存：IndexedDB</span>
+        <button id="exportDay" class="accent">匯出當日 JSON</button>
+        <button id="clearDay" class="danger">清空當日</button>
+      </div>
+    </div>
+
+    <div class="grid">
+      <section class="card" style="min-height:280px;">
+        <h3>當日紀錄</h3>
+        <div class="content">
+          <div id="emptyState" class="muted">今天還沒有記錄，從下方開始新增吧！</div>
+          <div id="list" class="list"></div>
+        </div>
+      </section>
+
+      <section class="card">
+        <h3>新增記錄（自動加上時間）</h3>
+        <div class="content">
+          <div class="row" style="justify-content:space-between;">
+            <div>
+              <span class="muted">現在時間：</span>
+              <span id="now"></span>
+            </div>
+            <div>
+              <label class="muted inline">切換日期：</label>
+              <input type="date" id="datePicker" />
+            </div>
+          </div>
+
+          <h4>文字</h4>
+          <textarea id="textInput" placeholder="寫下此刻...（範例：想法、地點、事件）"></textarea>
+          <div class="controls">
+            <button id="addText" class="primary">加入文字</button>
+          </div>
+
+          <h4>照片</h4>
+          <div class="row">
+            <input id="photoInput" type="file" accept="image/*" capture="environment" />
+            <button id="snapMode" class="accent">開相機拍照</button>
+          </div>
+          <div id="cameraArea" class="hidden">
+            <video id="cam" playsinline autoplay muted style="max-width:100%; border-radius:12px; border:1px solid #1b2a44;"></video>
+            <div class="controls" style="margin-top:8px;">
+              <button id="takePhoto" class="good">拍照</button>
+              <button id="closeCam">關閉相機</button>
+            </div>
+          </div>
+
+          <h4>影像</h4>
+          <div class="row">
+            <input id="videoInput" type="file" accept="video/*" capture="camcorder" />
+            <button id="recVideo" class="accent">用相機錄影</button>
+            <span id="recVideoState" class="muted"></span>
+          </div>
+
+          <h4>錄音</h4>
+          <div class="row">
+            <button id="recAudio" class="accent">開始錄音</button>
+            <span id="recAudioState" class="muted"></span>
+          </div>
+        </div>
+      </section>
+    </div>
+  </div>
+
+<script>
+(function(){
+  // ===== Utilities =====
+  const $ = (sel)=>document.querySelector(sel);
+  const fmtDate = (d)=> d.toISOString().slice(0,10); // yyyy-mm-dd
+  const fmtTime = (d)=> d.toTimeString().slice(0,5); // HH:MM
+  const nowStr = ()=> new Date().toLocaleString();
+
+  // ===== IndexedDB minimal wrapper =====
+  const DB_NAME = 'life_logger_web';
+  const DB_VER = 1;
+  let db;
+  function openDB(){
+    return new Promise((resolve, reject)=>{
+      const req = indexedDB.open(DB_NAME, DB_VER);
+      req.onupgradeneeded = (e)=>{
+        const d = e.target.result;
+        const store = d.createObjectStore('entries', { keyPath: 'id', autoIncrement: true });
+        store.createIndex('by_day', 'day');
+      };
+      req.onsuccess = ()=>{ db = req.result; resolve(); };
+      req.onerror = ()=> reject(req.error);
+    });
+  }
+  function addEntry(entry){
+    return new Promise((resolve, reject)=>{
+      const tx = db.transaction('entries','readwrite');
+      tx.objectStore('entries').add(entry);
+      tx.oncomplete = ()=> resolve();
+      tx.onerror = ()=> reject(tx.error);
+    });
+  }
+  function listByDay(day){
+    return new Promise((resolve, reject)=>{
+      const tx = db.transaction('entries','readonly');
+      const idx = tx.objectStore('entries').index('by_day');
+      const req = idx.getAll(day);
+      req.onsuccess = ()=> resolve(req.result.sort((a,b)=> a.time.localeCompare(b.time)));
+      req.onerror = ()=> reject(req.error);
+    });
+  }
+  function clearDay(day){
+    return new Promise(async (resolve, reject)=>{
+      try{
+        const tx = db.transaction('entries','readwrite');
+        const store = tx.objectStore('entries');
+        const idx = store.index('by_day');
+        const req = idx.openCursor(day);
+        req.onsuccess = (e)=>{
+          const cur = e.target.result;
+          if(cur){ store.delete(cur.primaryKey); cur.continue(); }
+        };
+        tx.oncomplete = ()=> resolve();
+        tx.onerror = ()=> reject(tx.error);
+      }catch(err){ reject(err); }
+    });
+  }
+
+  // ===== State =====
+  let currentDay = fmtDate(new Date());
+  let mediaStream = null; // camera stream
+  let videoRecorder = null; let videoChunks = [];
+  let audioRecorder = null; let audioChunks = [];
+
+  // ===== DOM refs =====
+  const dayLabel = $('#dayLabel');
+  const nowLabel = $('#now');
+  const datePicker = $('#datePicker');
+  const listEl = $('#list');
+  const emptyState = $('#emptyState');
+
+  // inputs
+  const textInput = $('#textInput');
+  const addTextBtn = $('#addText');
+  const photoInput = $('#photoInput');
+  const videoInput = $('#videoInput');
+
+  // camera
+  const snapModeBtn = $('#snapMode');
+  const cameraArea = $('#cameraArea');
+  const cam = $('#cam');
+  const takePhotoBtn = $('#takePhoto');
+  const closeCamBtn = $('#closeCam');
+
+  // recording
+  const recVideoBtn = $('#recVideo');
+  const recVideoState = $('#recVideoState');
+  const recAudioBtn = $('#recAudio');
+  const recAudioState = $('#recAudioState');
+
+  const prevDayBtn = $('#prevDay');
+  const nextDayBtn = $('#nextDay');
+  const exportDayBtn = $('#exportDay');
+  const clearDayBtn = $('#clearDay');
+
+  // ===== Init =====
+  openDB().then(()=>{
+    datePicker.value = currentDay;
+    tickNow(); setInterval(tickNow, 1000);
+    renderDay();
+  }).catch(err=>{
+    alert('無法啟用本機儲存（IndexedDB）：'+ err);
+  });
+
+  function tickNow(){ nowLabel.textContent = nowStr(); }
+
+  function setDay(d){ currentDay = d; datePicker.value = d; renderDay(); }
+
+  function dayShift(delta){
+    const base = new Date(currentDay + 'T00:00:00');
+    base.setDate(base.getDate()+delta);
+    setDay(fmtDate(base));
+  }
+
+  prevDayBtn.onclick = ()=> dayShift(-1);
+  nextDayBtn.onclick = ()=> dayShift(1);
+  datePicker.onchange = ()=> setDay(datePicker.value);
+
+  async function renderDay(){
+    dayLabel.textContent = `${currentDay}（${['日','一','二','三','四','五','六'][new Date(currentDay).getDay()]}）`;
+    const items = await listByDay(currentDay);
+    listEl.innerHTML = '';
+    if(!items.length){ emptyState.style.display='block'; return; }
+    emptyState.style.display='none';
+    for(const it of items){ listEl.appendChild(renderItem(it)); }
+  }
+
+  function renderItem(it){
+    const wrap = document.createElement('div');
+    wrap.className='item';
+    const icon = document.createElement('div');
+    icon.className='type';
+    const meta = document.createElement('div');
+    meta.className='meta';
+    const right = document.createElement('div');
+    right.className='meta';
+
+    let content;
+    if(it.type==='text'){
+      icon.textContent='✎';
+      content = document.createElement('div');
+      content.textContent = it.content || '';
+    } else if(it.type==='photo'){
+      icon.textContent='🖼️';
+      content = document.createElement('div');
+      const img = document.createElement('img');
+      img.className='thumb';
+      img.loading='lazy';
+      img.src = URL.createObjectURL(it.blob);
+      content.appendChild(img);
+    } else if(it.type==='video'){
+      icon.textContent='🎞️';
+      content = document.createElement('div');
+      const vid = document.createElement('video');
+      vid.className='thumb'; vid.controls=true; vid.src = URL.createObjectURL(it.blob);
+      content.appendChild(vid);
+    } else if(it.type==='audio'){
+      icon.textContent='🎙️';
+      content = document.createElement('div');
+      const au = document.createElement('audio');
+      au.controls=true; au.src = URL.createObjectURL(it.blob);
+      content.appendChild(au);
+    }
+
+    const time = new Date(it.time);
+    meta.textContent = `${labelOf(it.type)} · ${fmtTime(time)}`;
+
+    wrap.appendChild(icon);
+    wrap.appendChild((()=>{ const box=document.createElement('div'); box.appendChild(content); return box; })());
+    wrap.appendChild(meta);
+    return wrap;
+  }
+
+  function labelOf(t){
+    return t==='text'?'文字': t==='photo'?'照片': t==='video'?'影片':'錄音';
+  }
+
+  // ===== Add text =====
+  addTextBtn.onclick = async ()=>{
+    const val = textInput.value.trim();
+    if(!val) return;
+    await addEntry({ day: currentDay, time: new Date().toISOString(), type:'text', content: val });
+    textInput.value='';
+    renderDay();
+  };
+
+  // ===== Photo via file input =====
+  photoInput.onchange = async (e)=>{
+    const f = e.target.files && e.target.files[0];
+    if(!f) return;
+    const blob = await f.arrayBuffer().then(b=> new Blob([b], { type:f.type || 'image/jpeg' }));
+    await addEntry({ day: currentDay, time: new Date().toISOString(), type:'photo', blob });
+    photoInput.value='';
+    renderDay();
+  };
+
+  // ===== Live camera photo =====
+  snapModeBtn.onclick = async ()=>{
+    try{
+      mediaStream = await navigator.mediaDevices.getUserMedia({ video:true, audio:false });
+      cam.srcObject = mediaStream; cameraArea.classList.remove('hidden');
+    }catch(err){ alert('相機無法啟用：'+err); }
+  };
+  closeCamBtn.onclick = ()=> stopCamera();
+  function stopCamera(){ if(mediaStream){ mediaStream.getTracks().forEach(t=>t.stop()); mediaStream=null; } cameraArea.classList.add('hidden'); }
+  takePhotoBtn.onclick = async ()=>{
+    if(!mediaStream) return;
+    const track = mediaStream.getVideoTracks()[0];
+    const cap = new ImageCapture(track);
+    try{
+      const bitmap = await cap.grabFrame();
+      const canvas = document.createElement('canvas');
+      canvas.width = bitmap.width; canvas.height = bitmap.height;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(bitmap,0,0);
+      canvas.toBlob(async (blob)=>{
+        await addEntry({ day: currentDay, time: new Date().toISOString(), type:'photo', blob });
+        renderDay();
+      }, 'image/jpeg', 0.9);
+    }catch(err){ alert('拍照失敗：'+err); }
+  };
+
+  // ===== Video via file input =====
+  videoInput.onchange = async (e)=>{
+    const f = e.target.files && e.target.files[0];
+    if(!f) return;
+    const blob = await f.arrayBuffer().then(b=> new Blob([b], { type:f.type || 'video/mp4' }));
+    await addEntry({ day: currentDay, time: new Date().toISOString(), type:'video', blob });
+    videoInput.value='';
+    renderDay();
+  };
+
+  // ===== Video recording via camera =====
+  recVideoBtn.onclick = async ()=>{
+    try{
+      if(!videoRecorder){
+        mediaStream = await navigator.mediaDevices.getUserMedia({ video:true, audio:true });
+        videoChunks = [];
+        videoRecorder = new MediaRecorder(mediaStream);
+        videoRecorder.ondataavailable = (e)=>{ if(e.data && e.data.size) videoChunks.push(e.data); };
+        videoRecorder.onstop = async ()=>{
+          const blob = new Blob(videoChunks, { type: videoChunks[0]?.type || 'video/webm' });
+          await addEntry({ day: currentDay, time: new Date().toISOString(), type:'video', blob });
+          renderDay();
+          stopCamera();
+          videoRecorder = null; videoChunks=[];
+        };
+        videoRecorder.start();
+        recVideoState.textContent = '錄影中… 再按一次停止';
+        recVideoBtn.textContent = '停止錄影';
+      } else {
+        videoRecorder.stop();
+        recVideoState.textContent = '';
+        recVideoBtn.textContent = '用相機錄影';
+      }
+    }catch(err){ alert('錄影失敗或未授權：'+err); }
+  };
+
+  // ===== Audio recording =====
+  recAudioBtn.onclick = async ()=>{
+    try{
+      if(!audioRecorder){
+        const stream = await navigator.mediaDevices.getUserMedia({ audio:true });
+        audioChunks = [];
+        audioRecorder = new MediaRecorder(stream);
+        audioRecorder.ondataavailable = (e)=>{ if(e.data && e.data.size) audioChunks.push(e.data); };
+        audioRecorder.onstop = async ()=>{
+          const blob = new Blob(audioChunks, { type: audioChunks[0]?.type || 'audio/webm' });
+          await addEntry({ day: currentDay, time: new Date().toISOString(), type:'audio', blob });
+          renderDay();
+          stream.getTracks().forEach(t=>t.stop());
+          audioRecorder = null; audioChunks=[];
+        };
+        audioRecorder.start();
+        recAudioState.textContent = '錄音中… 再按一次停止';
+        recAudioBtn.textContent = '停止錄音';
+      } else {
+        audioRecorder.stop();
+        recAudioState.textContent = '';
+        recAudioBtn.textContent = '開始錄音';
+      }
+    }catch(err){ alert('錄音失敗或未授權：'+err); }
+  };
+
+  // ===== Export day as JSON (base64) =====
+  exportDayBtn.onclick = async ()=>{
+    const items = await listByDay(currentDay);
+    const json = await entriesToExportJson(items);
+    const blob = new Blob([JSON.stringify(json,null,2)], { type:'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `${currentDay}.life.json`;
+    a.click();
+  };
+
+  async function entriesToExportJson(items){
+    async function b64FromBlob(b){
+      const buf = await b.arrayBuffer();
+      let binary = ''; const bytes = new Uint8Array(buf);
+      const chunk = 0x8000; // chunked to avoid stack overflow
+      for(let i=0;i<bytes.length;i+=chunk){
+        binary += String.fromCharCode.apply(null, bytes.subarray(i, i+chunk));
+      }
+      return btoa(binary);
+    }
+    const out = [];
+    for(const it of items){
+      if(it.type==='text') out.push({ type:'text', day:it.day, time:it.time, content:it.content });
+      else out.push({ type:it.type, day:it.day, time:it.time, mime: it.blob?.type || '', base64: await b64FromBlob(it.blob) });
+    }
+    return out;
+  }
+
+  // ===== Clear day =====
+  clearDayBtn.onclick = async ()=>{
+    if(confirm('確定刪除當日所有記錄？此動作無法復原。')){
+      await clearDay(currentDay); renderDay();
+    }
+  };
+})();
+</script>
+</body>
+</html>
